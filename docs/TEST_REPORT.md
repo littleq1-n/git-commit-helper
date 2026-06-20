@@ -3,11 +3,11 @@
 > 运行命令：`pytest`（配置见 `pyproject.toml`，自动启用 coverage）
 > 环境：Python 3.11.13 / pytest 9.x / pytest-mock / pytest-cov
 
-## 结果汇总
+## 结果汇总（含增强版 v2）
 
-- 用例总数：**46 passed**
+- 用例总数：**81 passed**
 - 通过率：**100%**（≥80% 要求达标）
-- 总覆盖率：**88%**（≥80% 要求达标）
+- 总覆盖率：**91%**（≥80% 要求达标）
 
 ## 覆盖率明细
 
@@ -20,7 +20,10 @@
 | `git_ops.py` | 97% | Git 操作层 |
 | `history.py` | 96% | 历史分析（R7） |
 | `llm.py` | 88% | LLM 调用 + 降级（R2/R9） |
-| `cli.py` | 77% | CLI 编排（未覆盖为 questionary/click 真实交互分支） |
+| `cli.py` | 84% | CLI 编排（未覆盖为 questionary/click 真实交互分支） |
+| `security.py` | 100% | 敏感信息扫描/脱敏（v2） |
+| `doctor.py` | 100% | 环境自检（v2） |
+| `hooks.py` | 92% | git hook 安装/校验（v2） |
 | `__main__.py` | 0% | 仅入口转发，运行时验证 |
 
 > 未覆盖部分集中在需要真实终端交互（questionary 选择、`$EDITOR` 编辑）的代码路径，
@@ -37,6 +40,15 @@
 | R7 历史分析 | `test_history.py` |
 | R8 格式校验 | `test_validator.py` |
 | R9 API 降级 | `test_llm.py`（重试后成功 / 全失败降级） |
+
+### 增强版（v2）能力—测试 对应
+
+| 能力 | 测试文件 |
+|------|----------|
+| 环境自检 doctor | `test_doctor.py` + `test_cli.py` |
+| 敏感信息扫描/脱敏 | `test_security.py` + `test_cli.py`（脱敏继续/取消） |
+| Markdown 报告 | `test_history.py` + `test_cli.py`（导出/空仓库不写） |
+| git hook | `test_hooks.py` + `test_cli.py`（install/uninstall） |
 
 ## 复现实步骤
 

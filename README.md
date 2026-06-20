@@ -57,6 +57,47 @@ python -m git_commit_helper commit
 
 在 `.env` 中设置 `PROMPT_TEMPLATE_PATH` 指向一个 Jinja2 模板文件（需包含 `{{ diff }}` 占位符），即可覆盖默认生成风格；路径不存在时自动回退默认模板。
 
+## 增强版功能（v2）
+
+### 环境自检 `gch doctor`
+
+```bash
+gch doctor
+```
+
+检查 Python 版本、git、是否 Git 仓库、`.env`、LLM 配置与依赖包，输出诊断表与修复建议；存在未通过项时以非零退出码结束。
+
+### 敏感信息扫描 / 脱敏
+
+`gch commit` 在把 diff 发送给 LLM 前会自动扫描疑似敏感信息（`sk-` 密钥、token、secret、`.env` 变量、私钥头等）。命中时提示：
+
+```
+⚠ 检测到疑似敏感信息：
+  - OpenAI/通用 sk- 密钥: sk-****
+请选择：[脱敏后继续] / [取消]
+```
+
+选择「脱敏后继续」会把敏感值替换为 `***REDACTED***` 后再发送，**不会修改你的暂存区/工作区文件**；选择「取消」则不调用 LLM、不提交。
+
+### 历史分析导出 Markdown 报告
+
+```bash
+gch analyze --markdown report.md      # 或 -m report.md
+```
+
+将类型分布、提交总数、合规率与不合规列表写入 Markdown 文件。
+
+### Git hook 自动化
+
+```bash
+gch hook install      # 安装 prepare-commit-msg + commit-msg 到 .git/hooks/
+gch hook uninstall    # 移除（仅移除本工具安装的）
+```
+
+- `prepare-commit-msg`：执行 `git commit`（未带 `-m`）时自动生成提交信息。
+- `commit-msg`：提交前校验是否符合 Conventional Commits，不符合则阻止提交。
+- 已存在的同名 hook 会被备份为 `.bak`。
+
 ## 配置项（.env）
 
 | 变量 | 默认 | 说明 |
@@ -81,10 +122,13 @@ python -m git_commit_helper commit
 │   ├── llm.py               # LLM 调用 + 重试 + 降级
 │   ├── validator.py         # Conventional Commits 校验
 │   ├── template.py          # 自定义 prompt 模板
-│   ├── history.py           # 提交历史分析
+│   ├── history.py           # 提交历史分析 + Markdown 报告
+│   ├── security.py          # 敏感信息扫描 / 脱敏（v2）
+│   ├── doctor.py            # 环境自检（v2）
+│   ├── hooks.py             # git hook 安装/校验（v2）
 │   ├── config.py            # 配置加载
 │   └── errors.py            # 自定义异常
-├── tests/                   # pytest 测试（46 用例）
+├── tests/                   # pytest 测试（81 用例）
 ├── docs/TEST_REPORT.md      # 测试报告
 ├── openspec/                # SDD 规范产物（proposal/specs/design/tasks）
 ├── requirements.txt / pyproject.toml / .env.example
@@ -99,12 +143,16 @@ pytest                     # 运行全部测试 + 终端覆盖率
 pytest --cov-report=html   # 生成 HTML 覆盖率报告到 htmlcov/
 ```
 
-当前：**46 用例全部通过，覆盖率 88%**。详见 `docs/TEST_REPORT.md`。
+当前：**81 用例全部通过，覆盖率 91%**。详见 `docs/TEST_REPORT.md`。
 
 ## SDD 流程
 
-本项目遵循规范驱动开发（OpenSpec），各阶段产物位于 `openspec/changes/add-commit-message-generation/`：
-`proposal.md`（背景/范围）、`specs/`（四个能力的需求场景）、`design.md`（架构决策）、`tasks.md`（任务清单）。详见 `PLAN.md`。
+本项目遵循规范驱动开发（OpenSpec），各阶段产物位于 `openspec/changes/`：
+
+- `add-commit-message-generation/`：标准版（提交生成/校验/模板/历史分析）。
+- `add-enhanced-features/`：增强版（环境自检/敏感扫描/Markdown 报告/git hook）。
+
+每个 change 含 `proposal.md`、`specs/`、`design.md`、`tasks.md`。详见 `PLAN.md`。
 
 
 ## 截图测试
