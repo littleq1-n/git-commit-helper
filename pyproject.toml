@@ -1,0 +1,22 @@
+[project]
+name = "git-commit-helper"
+version = "0.1.0"
+description = "智能 Git 提交助手：读取 staged diff，调用 LLM 生成 Conventional Commits message"
+requires-python = ">=3.9"
+readme = "README.md"
+
+[project.scripts]
+# 安装后可用 `gch` 命令调用；入口在实现阶段补全
+gch = "git_commit_helper.cli:app"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --cov=git_commit_helper --cov-report=term-missing"
+pythonpath = ["src"]

@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# 测试与覆盖率
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# 环境变量与密钥（绝不提交）
+.env
+*.key
+
+# IDE / 系统
+.vscode/
+.idea/
+.DS_Store
