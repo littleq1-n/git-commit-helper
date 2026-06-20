@@ -3,6 +3,7 @@ typer>=0.12.0          # CLI 框架
 rich>=13.7.0           # 终端美化与表格/面板输出
 questionary>=2.0.1     # 交互式确认/选择
 openai>=1.30.0         # LLM 调用（兼容 DeepSeek/通义/Kimi/Ollama 等 OpenAI 协议端点）
+jinja2>=3.1.0          # 自定义 prompt 模板渲染
 pydantic>=2.7.0        # 数据模型
 pydantic-settings>=2.3.0   # 读取 .env 配置
 python-dotenv>=1.0.1  # 加载 .env
