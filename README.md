@@ -111,4 +111,4 @@ pytest --cov-report=html   # 生成 HTML 覆盖率报告到 htmlcov/
 ![测试图](./test.png)
 
 ## 模板对比测试
-## 默认模板
+![测试图](./test2.png)
