@@ -105,3 +105,6 @@ pytest --cov-report=html   # 生成 HTML 覆盖率报告到 htmlcov/
 
 本项目遵循规范驱动开发（OpenSpec），各阶段产物位于 `openspec/changes/add-commit-message-generation/`：
 `proposal.md`（背景/范围）、`specs/`（四个能力的需求场景）、`design.md`（架构决策）、`tasks.md`（任务清单）。详见 `PLAN.md`。
+
+
+#截图测试
