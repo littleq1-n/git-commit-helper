@@ -8,11 +8,13 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 
-from . import doctor, git_ops, history, llm, security, validator
+from . import doctor, git_ops, history, hooks, llm, security, validator
 from .config import load_settings
 from .errors import GitCommandError, NoStagedChanges
 
 app = typer.Typer(help="智能 Git 提交助手：生成符合 Conventional Commits 规范的提交信息。")
+hook_app = typer.Typer(help="安装/卸载 Git hook（自动生成与提交校验）。")
+app.add_typer(hook_app, name="hook")
 
 
 def _prompt_action() -> str:
@@ -190,6 +192,33 @@ def doctor_cmd() -> None:
         console.print(f"[red]{len(failed)} 项未通过，请按建议修复[/red]")
         raise typer.Exit(code=1)
     console.print("[green]✔ 全部检查通过[/green]")
+
+
+@hook_app.command("install")
+def hook_install_cmd() -> None:
+    """在当前仓库安装 prepare-commit-msg 与 commit-msg 钩子。"""
+    console = Console()
+    if not git_ops.is_git_repo():
+        console.print("[red]当前目录不是 Git 仓库[/red]")
+        raise typer.Exit(code=1)
+    written = hooks.install(".")
+    for path in written:
+        console.print(f"[green]✔ 已安装[/green] {path}")
+
+
+@hook_app.command("uninstall")
+def hook_uninstall_cmd() -> None:
+    """移除由本工具安装的 Git 钩子。"""
+    console = Console()
+    if not git_ops.is_git_repo():
+        console.print("[red]当前目录不是 Git 仓库[/red]")
+        raise typer.Exit(code=1)
+    removed = hooks.uninstall(".")
+    if removed:
+        for path in removed:
+            console.print(f"[green]✔ 已移除[/green] {path}")
+    else:
+        console.print("未发现由本工具安装的 hook")
 
 
 if __name__ == "__main__":

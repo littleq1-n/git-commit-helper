@@ -177,3 +177,56 @@ def test_commit_sensitive_cancel(mocker):
     assert result.exit_code == 0
     assert "已取消" in result.stdout
     commit.assert_not_called()
+
+
+def test_doctor_all_pass(mocker):
+    from git_commit_helper.doctor import CheckResult
+    mocker.patch.object(
+        cli.doctor, "run_checks",
+        return_value=[CheckResult(name="X", passed=True, detail="ok")],
+    )
+    result = runner.invoke(cli.app, ["doctor"])
+    assert result.exit_code == 0
+    assert "全部检查通过" in result.stdout
+
+
+def test_doctor_with_failure(mocker):
+    from git_commit_helper.doctor import CheckResult
+    mocker.patch.object(
+        cli.doctor, "run_checks",
+        return_value=[CheckResult(name="X", passed=False, detail="bad", suggestion="修一下")],
+    )
+    result = runner.invoke(cli.app, ["doctor"])
+    assert result.exit_code == 1
+    assert "未通过" in result.stdout
+
+
+def test_hook_install_cmd(mocker):
+    mocker.patch.object(cli.git_ops, "is_git_repo", return_value=True)
+    mocker.patch.object(cli.hooks, "install", return_value=["./.git/hooks/commit-msg"])
+    result = runner.invoke(cli.app, ["hook", "install"])
+    assert result.exit_code == 0
+    assert "已安装" in result.stdout
+
+
+def test_hook_install_not_repo(mocker):
+    mocker.patch.object(cli.git_ops, "is_git_repo", return_value=False)
+    result = runner.invoke(cli.app, ["hook", "install"])
+    assert result.exit_code == 1
+    assert "不是 Git 仓库" in result.stdout
+
+
+def test_hook_uninstall_cmd(mocker):
+    mocker.patch.object(cli.git_ops, "is_git_repo", return_value=True)
+    mocker.patch.object(cli.hooks, "uninstall", return_value=["./.git/hooks/commit-msg"])
+    result = runner.invoke(cli.app, ["hook", "uninstall"])
+    assert result.exit_code == 0
+    assert "已移除" in result.stdout
+
+
+def test_hook_uninstall_none(mocker):
+    mocker.patch.object(cli.git_ops, "is_git_repo", return_value=True)
+    mocker.patch.object(cli.hooks, "uninstall", return_value=[])
+    result = runner.invoke(cli.app, ["hook", "uninstall"])
+    assert result.exit_code == 0
+    assert "未发现" in result.stdout
