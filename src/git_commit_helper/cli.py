@@ -8,7 +8,7 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 
-from . import git_ops, history, llm, validator
+from . import git_ops, history, llm, security, validator
 from .config import load_settings
 from .errors import GitCommandError, NoStagedChanges
 
@@ -44,6 +44,39 @@ def _edit_message(message: str) -> str:
     return (edited or message).strip()
 
 
+def _prompt_sensitive() -> str:
+    """敏感信息命中后交互选择，返回 'redact'（脱敏后继续）或 'cancel'（取消）。"""
+    import questionary
+
+    choice = questionary.select(
+        "检测到疑似敏感信息，请选择：",
+        choices=[
+            questionary.Choice("脱敏后继续", "redact"),
+            questionary.Choice("取消", "cancel"),
+        ],
+    ).ask()
+    return choice or "cancel"
+
+
+def _scan_and_handle(console: Console, diff: str) -> str | None:
+    """扫描 diff；命中敏感信息时提示用户。
+
+    返回用于发送 LLM 的 diff（可能已脱敏）；用户取消时返回 None。
+    """
+    findings = security.scan(diff)
+    if not findings:
+        return diff
+
+    console.print("[yellow]⚠ 检测到疑似敏感信息：[/yellow]")
+    for finding in findings:
+        console.print(f"  - {finding.kind}: {finding.snippet}")
+
+    if _prompt_sensitive() == "redact":
+        console.print("[green]已脱敏，将发送脱敏后的 diff[/green]")
+        return security.redact(diff)
+    return None
+
+
 def _render_message(console: Console, message: str, result: validator.ValidationResult) -> None:
     """展示生成的提交信息与校验结果。"""
     console.print(Panel(message, title="生成的提交信息", border_style="cyan"))
@@ -72,7 +105,12 @@ def commit_cmd() -> None:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1)
 
-    gen = llm.generate_commit_message(diff, settings=settings)
+    send_diff = _scan_and_handle(console, diff)
+    if send_diff is None:
+        console.print("已取消，未提交。")
+        raise typer.Exit(code=0)
+
+    gen = llm.generate_commit_message(send_diff, settings=settings)
     message = gen.message
     if gen.degraded:
         console.print("[yellow]⚠ LLM 调用失败，已降级为模板兜底信息，请检查后再提交[/yellow]")

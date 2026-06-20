@@ -116,3 +116,37 @@ def test_analyze_empty(mocker):
 
     assert result.exit_code == 0
     assert "暂无提交历史" in result.stdout
+
+
+def test_commit_sensitive_redact_continue(mocker):
+    sensitive = "+++ b/.env\n+API_KEY=sk-abcdef0123456789ABCDEF\n"
+    _patch_common(mocker, diff=sensitive)
+    mocker.patch.object(cli, "_prompt_sensitive", return_value="redact")
+    mocker.patch.object(cli, "_prompt_action", return_value="commit")
+    gen = mocker.patch.object(
+        cli.llm, "generate_commit_message",
+        return_value=GenerationResult(message="chore: update config", degraded=False),
+    )
+    mocker.patch.object(cli.git_ops, "commit", return_value="[main abc] chore")
+
+    result = runner.invoke(cli.app, ["commit"])
+
+    assert result.exit_code == 0
+    assert "敏感信息" in result.stdout
+    # 发送给 LLM 的 diff 应已脱敏，不含原始密钥
+    sent_diff = gen.call_args.args[0]
+    assert "sk-abcdef0123456789ABCDEF" not in sent_diff
+    assert "REDACTED" in sent_diff
+
+
+def test_commit_sensitive_cancel(mocker):
+    sensitive = "+token=abcdef0123456789\n"
+    _patch_common(mocker, diff=sensitive)
+    mocker.patch.object(cli, "_prompt_sensitive", return_value="cancel")
+    commit = mocker.patch.object(cli.git_ops, "commit")
+
+    result = runner.invoke(cli.app, ["commit"])
+
+    assert result.exit_code == 0
+    assert "已取消" in result.stdout
+    commit.assert_not_called()
