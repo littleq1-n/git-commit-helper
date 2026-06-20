@@ -8,7 +8,7 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 
-from . import git_ops, history, llm, security, validator
+from . import doctor, git_ops, history, llm, security, validator
 from .config import load_settings
 from .errors import GitCommandError, NoStagedChanges
 
@@ -157,6 +157,32 @@ def analyze_cmd(
 
     report = history.analyze(commits, settings.subject_max_length)
     console.print(history.build_table(report))
+
+
+@app.command("doctor")
+def doctor_cmd() -> None:
+    """检查运行环境与配置，输出诊断表并给出修复建议。"""
+    from rich.table import Table
+
+    console = Console()
+    settings = load_settings()
+    results = doctor.run_checks(settings)
+
+    table = Table(title="环境检查 (gch doctor)")
+    table.add_column("检查项", style="cyan")
+    table.add_column("状态", justify="center")
+    table.add_column("详情")
+    table.add_column("建议", style="yellow")
+    for r in results:
+        status = "[green]✔[/green]" if r.passed else "[red]✗[/red]"
+        table.add_row(r.name, status, r.detail, r.suggestion)
+    console.print(table)
+
+    failed = [r for r in results if not r.passed]
+    if failed:
+        console.print(f"[red]{len(failed)} 项未通过，请按建议修复[/red]")
+        raise typer.Exit(code=1)
+    console.print("[green]✔ 全部检查通过[/green]")
 
 
 if __name__ == "__main__":
