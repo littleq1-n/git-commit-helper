@@ -52,3 +52,20 @@ def test_build_table_returns_table():
     report = history.analyze(history.parse(_raw(("h1", "feat: a"))))
     table = history.build_table(report)
     assert isinstance(table, Table)
+
+
+def test_build_markdown_content():
+    commits = history.parse(_raw(
+        ("h1", "feat: a"),
+        ("h2", "fix: b"),
+        ("h3", "随便写的不合规"),
+    ))
+    report = history.analyze(commits)
+    md = history.build_markdown(report)
+
+    assert "# 提交历史分析报告" in md
+    assert "总提交数：3" in md
+    assert "| type | 数量 |" in md
+    assert "| feat | 1 |" in md
+    assert "## 不合规提交" in md
+    assert "随便写的不合规" in md

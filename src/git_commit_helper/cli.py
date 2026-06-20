@@ -141,6 +141,7 @@ def commit_cmd() -> None:
 @app.command("analyze")
 def analyze_cmd(
     count: int = typer.Option(50, "--count", "-n", help="分析最近多少条提交"),
+    markdown: str = typer.Option(None, "--markdown", "-m", help="导出 Markdown 报告到指定路径"),
 ) -> None:
     """分析提交历史：类型分布、提交数与规范合规率。"""
     console = Console()
@@ -156,7 +157,13 @@ def analyze_cmd(
         raise typer.Exit(code=0)
 
     report = history.analyze(commits, settings.subject_max_length)
-    console.print(history.build_table(report))
+
+    if markdown:
+        with open(markdown, "w", encoding="utf-8") as f:
+            f.write(history.build_markdown(report))
+        console.print(f"[green]✔ 已生成 Markdown 报告：{markdown}[/green]")
+    else:
+        console.print(history.build_table(report))
 
 
 @app.command("doctor")

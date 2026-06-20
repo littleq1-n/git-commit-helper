@@ -66,6 +66,28 @@ def analyze(commits: list[Commit], subject_max_length: int = 72) -> Report:
     return report
 
 
+def build_markdown(report: Report) -> str:
+    """将报告渲染为 Markdown 文本。"""
+    lines = ["# 提交历史分析报告", ""]
+    lines.append(f"- 总提交数：{report.total}")
+    lines.append(f"- 规范合规率：{report.compliance_rate:.0%}")
+    lines.append("")
+    lines.append("## 类型分布")
+    lines.append("")
+    lines.append("| type | 数量 |")
+    lines.append("| --- | ---: |")
+    for commit_type, count in sorted(report.type_counts.items(), key=lambda kv: -kv[1]):
+        lines.append(f"| {commit_type} | {count} |")
+    if report.non_compliant_subjects:
+        lines.append("")
+        lines.append("## 不合规提交")
+        lines.append("")
+        for subject in report.non_compliant_subjects:
+            lines.append(f"- {subject}")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def build_table(report: Report):
     """将报告渲染为 Rich 表格（供 CLI 展示）。"""
     from rich.table import Table

@@ -118,6 +118,33 @@ def test_analyze_empty(mocker):
     assert "暂无提交历史" in result.stdout
 
 
+def test_analyze_markdown_export(mocker, tmp_path):
+    mocker.patch.object(cli.git_ops, "is_git_repo", return_value=True)
+    raw = "h1\x1ffeat: a\nh2\x1ffix: b"
+    mocker.patch.object(cli.git_ops, "get_log", return_value=raw)
+    out = tmp_path / "report.md"
+
+    result = runner.invoke(cli.app, ["analyze", "--markdown", str(out)])
+
+    assert result.exit_code == 0
+    assert out.is_file()
+    content = out.read_text(encoding="utf-8")
+    assert "# 提交历史分析报告" in content
+    assert "已生成" in result.stdout
+
+
+def test_analyze_markdown_empty_repo_no_file(mocker, tmp_path):
+    mocker.patch.object(cli.git_ops, "is_git_repo", return_value=True)
+    mocker.patch.object(cli.git_ops, "get_log", return_value="")
+    out = tmp_path / "report.md"
+
+    result = runner.invoke(cli.app, ["analyze", "--markdown", str(out)])
+
+    assert result.exit_code == 0
+    assert not out.exists()
+    assert "暂无提交历史" in result.stdout
+
+
 def test_commit_sensitive_redact_continue(mocker):
     sensitive = "+++ b/.env\n+API_KEY=sk-abcdef0123456789ABCDEF\n"
     _patch_common(mocker, diff=sensitive)
