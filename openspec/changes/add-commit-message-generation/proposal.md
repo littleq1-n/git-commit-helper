@@ -25,9 +25,19 @@
 
 <!-- 无：本项目为全新能力，openspec/specs/ 下暂无既有规范 -->
 
+## 验收标准
+
+- [x] 暂存区有改动时能生成符合 Conventional Commits 的提交信息；非 Git 仓库 / 无暂存改动时给出明确提示并非零退出
+- [x] 支持「提交 / 编辑后提交 / 取消」交互，编辑后重新校验
+- [x] 支持通过 Jinja2 模板自定义生成风格，模板缺失自动回退默认
+- [x] 提供独立的 Conventional Commits 格式校验（type/subject/首行长度/正文空行）
+- [x] LLM 失败时指数退避重试，耗尽后降级为模板兜底信息且流程不中断
+- [x] `analyze` 能统计类型分布、提交数与合规率
+- [x] 测试通过率 ≥80%、覆盖率 ≥80%（实际 100 用例 / 90%）
+
 ## Impact
 
 - **新增代码**：`src/git_commit_helper/` 下的 `cli.py`、`git_ops.py`、`llm.py`、`validator.py`、`template.py`、`history.py`、`config.py`、`errors.py`。
-- **依赖**：typer、rich、questionary、openai、pydantic-settings、jinja2、pytest（已在 `requirements.txt` 声明）。
-- **运行环境**：纯软件，依赖一个兼容 OpenAI 协议的 LLM 端点（通过 `.env` 配置）。
+- **依赖**：typer、rich、questionary、openai、pydantic-settings、jinja2、pytest（声明于 `pyproject.toml` 的 `[project].dependencies` 与 `[project.optional-dependencies].dev`）。
+- **运行环境**：纯软件，依赖一个兼容 OpenAI 协议的 LLM 端点；API Key 通过环境变量 `LLM_API_KEY` 注入，不写入项目文件。
 - **外部系统**：调用本地 `git` 命令与远端 LLM API；不修改用户的全局 git 配置。
