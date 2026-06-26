@@ -52,17 +52,29 @@ def scan(diff: str) -> list[Finding]:
     return findings
 
 
+def _sub(m: re.Match) -> str:
+    """替换回调：有捕获组时仅替换敏感值，保留键名/前缀；否则整体替换。"""
+    if m.groups():
+        whole = m.group(0)
+        value = m.group(1)
+        return whole.replace(value, REDACTION_PLACEHOLDER)
+    return REDACTION_PLACEHOLDER
+
+
 def redact(diff: str) -> str:
     """将 diff 中命中的敏感值替换为占位符，返回脱敏后的副本。"""
     redacted = diff
     for _, pattern in _PATTERNS:
-        def _sub(m: re.Match) -> str:
-            if m.groups():
-                # 仅替换敏感值捕获组，保留键名/前缀
-                whole = m.group(0)
-                value = m.group(1)
-                return whole.replace(value, REDACTION_PLACEHOLDER)
-            return REDACTION_PLACEHOLDER
-
         redacted = pattern.sub(_sub, redacted)
     return redacted
+
+
+def scan_and_redact(diff: str) -> tuple[str, list[Finding]]:
+    """非交互式扫描并自动脱敏。
+
+    返回 ``(safe_diff, findings)``：命中敏感信息时 ``safe_diff`` 为脱敏副本，
+    否则原样返回。供 git hook 等无人值守路径复用，保证与交互式 commit 流程
+    的敏感信息防护策略一致。
+    """
+    findings = scan(diff)
+    return (redact(diff) if findings else diff), findings

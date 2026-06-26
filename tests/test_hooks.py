@@ -103,6 +103,26 @@ def test_run_prepare_generates_when_empty(tmp_path, mocker):
     assert "feat: generated" in msg.read_text(encoding="utf-8")
 
 
+def test_run_prepare_redacts_sensitive_before_llm(tmp_path, mocker):
+    msg = tmp_path / "MSG"
+    msg.write_text("\n", encoding="utf-8")
+    sensitive = "+++ b/.env\n+API_KEY=sk-abcdef0123456789ABCDEF\n"
+    mocker.patch.object(hooks.git_ops, "get_staged_diff", return_value=sensitive)
+    import git_commit_helper.llm as llm_mod
+    gen = mocker.patch.object(
+        llm_mod, "generate_commit_message",
+        return_value=GenerationResult(message="chore: update config", degraded=False),
+    )
+
+    rc = hooks.run_prepare(str(msg))
+
+    assert rc == 0
+    # hook 路径也必须脱敏后再发 LLM，与交互式 commit 一致
+    sent_diff = gen.call_args.args[0]
+    assert "sk-abcdef0123456789ABCDEF" not in sent_diff
+    assert "REDACTED" in sent_diff
+
+
 def test_run_prepare_skips_when_has_content(tmp_path, mocker):
     msg = tmp_path / "MSG"
     msg.write_text("feat: 用户已写\n", encoding="utf-8")

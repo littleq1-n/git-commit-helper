@@ -59,3 +59,18 @@ def test_redact_keeps_key_name():
 def test_redact_clean_diff_unchanged():
     diff = "diff --git a/x b/x\n+normal code line\n"
     assert security.redact(diff) == diff
+
+
+def test_scan_and_redact_with_finding():
+    diff = "+api_key=SuperSecretValue999\n"
+    safe, findings = security.scan_and_redact(diff)
+    assert findings
+    assert "SuperSecretValue999" not in safe
+    assert security.REDACTION_PLACEHOLDER in safe
+
+
+def test_scan_and_redact_clean():
+    diff = "+normal code\n"
+    safe, findings = security.scan_and_redact(diff)
+    assert findings == []
+    assert safe == diff

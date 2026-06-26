@@ -16,26 +16,36 @@ from . import git_ops
 
 HOOK_MARKER = "# git-commit-helper-managed"
 
-_PREPARE_SCRIPT = f"""\
+
+def _hook_scripts() -> dict[str, str]:
+    """生成 hook 脚本内容。
+
+    固化当前 Python 解释器路径（``sys.executable``），避免在未激活 venv 的
+    shell 或 GUI 客户端中因 PATH 上无本包而失败。
+    """
+    py = sys.executable or "python"
+    prepare = f"""\
 #!/bin/sh
 {HOOK_MARKER}
 # 当未通过 -m / 合并 / 模板等方式提供信息时($2 为空)，自动生成提交信息
 if [ -z "$2" ]; then
-    python -m git_commit_helper.hooks prepare "$1" || true
+    "{py}" -m git_commit_helper.hooks prepare "$1" || true
 fi
 """
-
-_COMMIT_MSG_SCRIPT = f"""\
+    commit_msg = f"""\
 #!/bin/sh
 {HOOK_MARKER}
 # 校验提交信息是否符合 Conventional Commits 规范
-python -m git_commit_helper.hooks validate "$1"
+"{py}" -m git_commit_helper.hooks validate "$1"
 """
+    return {
+        "prepare-commit-msg": prepare,
+        "commit-msg": commit_msg,
+    }
 
-_HOOKS = {
-    "prepare-commit-msg": _PREPARE_SCRIPT,
-    "commit-msg": _COMMIT_MSG_SCRIPT,
-}
+
+# hook 文件名集合（卸载时遍历用，与具体脚本内容无关）
+_HOOK_NAMES = ("prepare-commit-msg", "commit-msg")
 
 
 def _hooks_dir(repo_root: str) -> str:
@@ -47,7 +57,7 @@ def install(repo_root: str = ".") -> list[str]:
     hooks_dir = _hooks_dir(repo_root)
     os.makedirs(hooks_dir, exist_ok=True)
     written: list[str] = []
-    for name, content in _HOOKS.items():
+    for name, content in _hook_scripts().items():
         path = os.path.join(hooks_dir, name)
         if os.path.exists(path):
             os.replace(path, path + ".bak")
@@ -63,7 +73,7 @@ def uninstall(repo_root: str = ".") -> list[str]:
     """移除由本工具安装的 hook 脚本，返回已移除的文件路径列表。"""
     hooks_dir = _hooks_dir(repo_root)
     removed: list[str] = []
-    for name in _HOOKS:
+    for name in _HOOK_NAMES:
         path = os.path.join(hooks_dir, name)
         if os.path.isfile(path):
             with open(path, "r", encoding="utf-8") as f:
@@ -75,7 +85,7 @@ def uninstall(repo_root: str = ".") -> list[str]:
 
 def run_prepare(msg_file: str) -> int:
     """prepare-commit-msg 运行时：若提交信息文件为空则自动生成并写入。"""
-    from . import llm
+    from . import llm, security
 
     try:
         existing = ""
@@ -88,7 +98,11 @@ def run_prepare(msg_file: str) -> int:
             return 0
 
         diff = git_ops.get_staged_diff()
-        result = llm.generate_commit_message(diff)
+        # 与交互式 commit 流程一致：发送 LLM 前对敏感信息自动脱敏
+        safe_diff, findings = security.scan_and_redact(diff)
+        if findings:
+            sys.stderr.write(f"⚠ 已对 {len(findings)} 处疑似敏感信息脱敏后再生成提交信息\n")
+        result = llm.generate_commit_message(safe_diff)
         with open(msg_file, "w", encoding="utf-8") as f:
             f.write(result.message + "\n" + existing)
         return 0
@@ -99,6 +113,7 @@ def run_prepare(msg_file: str) -> int:
 
 def run_validate(msg_file: str) -> int:
     """commit-msg 运行时：校验提交信息，不合规返回非零阻止提交。"""
+    from .config import load_settings
     from .validator import validate
 
     with open(msg_file, "r", encoding="utf-8") as f:
@@ -106,7 +121,8 @@ def run_validate(msg_file: str) -> int:
     # 仅剔除 git 注释行，保留空行分隔以维持 subject/body 结构
     lines = [ln for ln in content.splitlines() if not ln.startswith("#")]
     message = "\n".join(lines).strip("\n")
-    result = validate(message)
+    # 与 CLI 一致：读取用户配置的首行长度上限，避免配置漂移
+    result = validate(message, load_settings().subject_max_length)
     if result.passed:
         return 0
     sys.stderr.write("提交信息不符合 Conventional Commits 规范：\n")
