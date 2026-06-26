@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     # 自定义 prompt 模板路径；为空则使用内置默认模板
     prompt_template_path: str | None = None
 
+    # 自定义周报 prompt 模板路径；为空则使用内置默认模板
+    report_prompt_template_path: str | None = None
+
     # Conventional Commits 首行长度上限
     subject_max_length: int = 72
 

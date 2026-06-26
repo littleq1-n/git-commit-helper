@@ -88,6 +88,57 @@ def build_markdown(report: Report) -> str:
     return "\n".join(lines)
 
 
+def format_stats(report: Report) -> str:
+    """将报告统计格式化为文本，供 LLM 周报 prompt 使用。"""
+    lines = [
+        f"- 总提交数：{report.total}",
+        f"- 合规率：{report.compliance_rate:.0%}",
+    ]
+    for commit_type, count in sorted(report.type_counts.items(), key=lambda kv: -kv[1]):
+        lines.append(f"- {commit_type}：{count}")
+    return "\n".join(lines)
+
+
+def format_commits(commits: list[Commit], limit: int = 50) -> str:
+    """将提交列表格式化为文本（每行一条 subject），供 LLM 周报 prompt 使用。"""
+    subjects = [f"- {c.subject}" for c in commits[:limit]]
+    return "\n".join(subjects)
+
+
+def _heuristic_suggestions(report: Report) -> list[str]:
+    """无 LLM 时基于类型分布给出规则版改进建议。"""
+    suggestions: list[str] = []
+    counts = report.type_counts
+    if counts.get("test", 0) == 0 and report.total > 0:
+        suggestions.append("缺少 test 类型提交，建议补充测试相关提交")
+    if counts.get("docs", 0) > counts.get("feat", 0) and counts.get("feat", 0) >= 0:
+        suggestions.append("docs 提交较多，建议增加 feat/test 类型提交以平衡交付")
+    if report.compliance_rate < 1 and report.total > 0:
+        suggestions.append(
+            f"存在 {len(report.non_compliant_subjects)} 条不合规提交，建议规范化提交信息"
+        )
+    if not suggestions:
+        suggestions.append("提交结构良好，继续保持规范化提交")
+    return suggestions
+
+
+def build_weekly_fallback(report: Report, commits: list[Commit]) -> str:
+    """LLM 不可用时的规则版周报（与 LLM 输出结构一致）。"""
+    lines = ["# Git 提交周报", "", "## 概览", ""]
+    lines.append(f"- 总提交数：{report.total}")
+    lines.append(f"- 合规率：{report.compliance_rate:.0%}")
+    for commit_type, count in sorted(report.type_counts.items(), key=lambda kv: -kv[1]):
+        lines.append(f"- {commit_type}：{count}")
+    lines += ["", "## 主要变更", ""]
+    for commit in commits[:10]:
+        lines.append(f"- {commit.subject}")
+    lines += ["", "## 建议", ""]
+    for suggestion in _heuristic_suggestions(report):
+        lines.append(f"- {suggestion}")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def build_table(report: Report):
     """将报告渲染为 Rich 表格（供 CLI 展示）。"""
     from rich.table import Table

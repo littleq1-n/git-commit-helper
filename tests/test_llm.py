@@ -94,3 +94,77 @@ def test_truncate_diff():
 
 def test_build_fallback_no_file():
     assert llm._build_fallback("no diff markers") == "chore: update files"
+
+
+def _report_and_commits():
+    from git_commit_helper import history
+
+    commits = history.parse("h1\x1ffeat: a\nh2\x1ffix: b\nh3\x1fdocs: c")
+    report = history.analyze(commits)
+    return report, commits
+
+
+def test_generate_weekly_report_ok():
+    report, commits = _report_and_commits()
+    client = SimpleNamespace(
+        chat=SimpleNamespace(
+            completions=SimpleNamespace(
+                create=lambda **kw: _fake_response("# Git 提交周报\n## 概览\n- 总提交数：3")
+            )
+        )
+    )
+
+    result = llm.generate_weekly_report(report, commits, settings=_settings(), client=client)
+
+    assert result.degraded is False
+    assert "周报" in result.message
+
+
+def test_generate_weekly_report_fallback():
+    report, commits = _report_and_commits()
+
+    def create(**kw):
+        raise ConnectionError("down")
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+
+    result = llm.generate_weekly_report(
+        report, commits, settings=_settings(llm_max_retries=1), client=client
+    )
+
+    assert result.degraded is True
+    # 规则版周报应包含固定三段式结构
+    assert "## 概览" in result.message
+    assert "## 主要变更" in result.message
+    assert "## 建议" in result.message
+
+
+def test_client_construction_failure_degrades(mocker):
+    # 缺少 api_key 等导致客户端构造失败时也应降级，而非抛异常
+    mocker.patch.object(llm, "_make_client", side_effect=RuntimeError("missing api_key"))
+
+    result = llm.generate_commit_message("+++ b/a.py\n+x", settings=_settings(llm_api_key=""))
+
+    assert result.degraded is True
+    assert "a.py" in result.message
+
+
+def test_fatal_error_stops_retry():
+    calls = {"n": 0}
+
+    class AuthenticationError(Exception):
+        pass
+
+    def create(**kw):
+        calls["n"] += 1
+        raise AuthenticationError("bad key")
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+
+    result = llm.generate_commit_message(
+        "+++ b/a.py\n+x", settings=_settings(llm_max_retries=5), client=client
+    )
+
+    assert result.degraded is True
+    # 鉴权类错误应立即停止，不应重试 5 次
+    assert calls["n"] == 1
