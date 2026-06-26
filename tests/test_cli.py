@@ -46,7 +46,8 @@ def test_commit_cancel(mocker):
 
 def test_commit_edit(mocker):
     _patch_common(mocker)
-    mocker.patch.object(cli, "_prompt_action", return_value="edit")
+    # 新交互闭环：编辑后回到菜单，再选择提交
+    mocker.patch.object(cli, "_prompt_action", side_effect=["edit", "commit"])
     mocker.patch.object(cli, "_edit_message", return_value="fix: edited subject")
     commit = mocker.patch.object(cli.git_ops, "commit", return_value="[main def] fix")
 
@@ -177,6 +178,77 @@ def test_commit_sensitive_cancel(mocker):
     assert result.exit_code == 0
     assert "已取消" in result.stdout
     commit.assert_not_called()
+
+
+def test_analyze_ai_report(mocker):
+    mocker.patch.object(cli.git_ops, "is_git_repo", return_value=True)
+    raw = "h1\x1ffeat: a\nh2\x1fdocs: b"
+    mocker.patch.object(cli.git_ops, "get_log", return_value=raw)
+    mocker.patch.object(
+        cli.llm, "generate_weekly_report",
+        return_value=GenerationResult(message="# Git 提交周报\n## 概览\n- 总提交数：2", degraded=False),
+    )
+
+    result = runner.invoke(cli.app, ["analyze", "--ai"])
+
+    assert result.exit_code == 0
+    assert "周报" in result.stdout
+
+
+def test_analyze_ai_markdown_export(mocker, tmp_path):
+    mocker.patch.object(cli.git_ops, "is_git_repo", return_value=True)
+    raw = "h1\x1ffeat: a"
+    mocker.patch.object(cli.git_ops, "get_log", return_value=raw)
+    mocker.patch.object(
+        cli.llm, "generate_weekly_report",
+        return_value=GenerationResult(message="# Git 提交周报\n内容", degraded=False),
+    )
+    out = tmp_path / "sub" / "weekly.md"
+
+    result = runner.invoke(cli.app, ["analyze", "--ai", "-m", str(out)])
+
+    assert result.exit_code == 0
+    assert out.is_file()
+    assert "周报" in out.read_text(encoding="utf-8")
+
+
+def test_init_creates_env(mocker, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+
+    result = runner.invoke(cli.app, ["init", "--yes"])
+
+    assert result.exit_code == 0
+    env = tmp_path / ".env"
+    assert env.is_file()
+    content = env.read_text(encoding="utf-8")
+    # 密钥不作为有效配置行写入（注释中的 export 引导不算）
+    active = [ln for ln in content.splitlines() if ln.strip() and not ln.strip().startswith("#")]
+    assert not any(ln.startswith("LLM_API_KEY=") for ln in active)
+    assert "设置 API Key" in result.stdout
+
+
+def test_init_no_overwrite_without_force(mocker, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("OLD\n", encoding="utf-8")
+
+    result = runner.invoke(cli.app, ["init", "--yes"])
+
+    assert result.exit_code == 0
+    assert (tmp_path / ".env").read_text(encoding="utf-8") == "OLD\n"
+
+
+def test_init_force_overwrite(mocker, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LLM_API_KEY", "sk-real")
+    (tmp_path / ".env").write_text("OLD\n", encoding="utf-8")
+
+    result = runner.invoke(cli.app, ["init", "--yes", "--force"])
+
+    assert result.exit_code == 0
+    content = (tmp_path / ".env").read_text(encoding="utf-8")
+    assert "OLD" not in content
+    assert "LLM_BASE_URL=" in content
 
 
 def test_doctor_all_pass(mocker):

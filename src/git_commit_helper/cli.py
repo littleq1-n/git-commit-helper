@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import os
+from typing import Optional
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
 
-from . import doctor, git_ops, history, hooks, llm, security, validator
+from . import doctor, git_ops, history, hooks, initializer, llm, security, validator
 from .config import load_settings
 from .errors import GitCommandError, NoStagedChanges
 
@@ -88,6 +89,63 @@ def _render_message(console: Console, message: str, result: validator.Validation
         console.print("[yellow]⚠ 校验未通过：[/yellow] " + "；".join(result.errors))
 
 
+@app.command("init")
+def init_cmd(
+    yes: bool = typer.Option(False, "--yes", "-y", help="使用默认值非交互生成，不询问"),
+    force: bool = typer.Option(False, "--force", "-f", help="已存在 .env 时直接覆盖"),
+) -> None:
+    """初始化配置：交互式生成 .env（不含密钥），并引导通过环境变量设置 API Key。"""
+    console = Console()
+
+    if initializer.env_exists() and not force:
+        if yes:
+            console.print("[yellow].env 已存在，使用 --force 可覆盖。已跳过生成。[/yellow]")
+            _print_key_guidance(console)
+            return
+        import questionary
+
+        overwrite = questionary.confirm(".env 已存在，是否覆盖？", default=False).ask()
+        if not overwrite:
+            console.print("已保留现有 .env。")
+            _print_key_guidance(console)
+            return
+        force = True
+
+    values = initializer.default_values()
+    if not yes:
+        import questionary
+
+        for key in ("LLM_BASE_URL", "LLM_MODEL", "LLM_TEMPERATURE", "LLM_MAX_TOKENS"):
+            answer = questionary.text(f"{key}", default=values[key]).ask()
+            if answer is not None and answer.strip():
+                values[key] = answer.strip()
+
+    content = initializer.render_env(values)
+    path, written = initializer.write_env(content, overwrite=force or yes)
+    if written:
+        console.print(f"[green]✔ 已生成配置文件：{path}[/green]")
+    else:
+        console.print(f"[yellow].env 已存在，未覆盖：{path}[/yellow]")
+
+    _print_key_guidance(console)
+
+
+def _print_key_guidance(console: Console) -> None:
+    """打印 API Key 环境变量设置引导（密钥不入项目文件）。"""
+    if initializer.api_key_present():
+        console.print("[green]✔ 已检测到环境变量 LLM_API_KEY[/green]")
+        return
+    console.print(
+        Panel(
+            "为避免密钥随项目泄露，API Key 不写入 .env，请通过环境变量设置：\n\n"
+            f"  [cyan]{initializer.export_hint()}[/cyan]\n\n"
+            "可将上述命令写入 ~/.bashrc 或 ~/.zshrc 以持久化。",
+            title="设置 API Key",
+            border_style="yellow",
+        )
+    )
+
+
 @app.command("commit")
 def commit_cmd() -> None:
     """读取暂存区改动，生成提交信息并交互确认后提交。"""
@@ -120,16 +178,18 @@ def commit_cmd() -> None:
     result = validator.validate(message, settings.subject_max_length)
     _render_message(console, message, result)
 
-    action = _prompt_action()
-    if action == "cancel":
-        console.print("已取消，未提交。")
-        raise typer.Exit(code=0)
-
-    if action == "edit":
-        message = _edit_message(message)
-        result = validator.validate(message, settings.subject_max_length)
-        if not result.passed:
-            console.print("[yellow]编辑后仍不符合规范：[/yellow] " + "；".join(result.errors))
+    # 交互闭环：编辑后重新校验并回到菜单，用户可继续编辑/提交/取消
+    while True:
+        action = _prompt_action()
+        if action == "cancel":
+            console.print("已取消，未提交。")
+            raise typer.Exit(code=0)
+        if action == "edit":
+            message = _edit_message(message)
+            result = validator.validate(message, settings.subject_max_length)
+            _render_message(console, message, result)
+            continue
+        break
 
     try:
         output = git_ops.commit(message)
@@ -140,12 +200,31 @@ def commit_cmd() -> None:
     console.print(f"[green]✔ 已提交[/green] {output}")
 
 
+def _write_report(console: Console, path: str, content: str) -> None:
+    """写入报告文件，自动创建父目录并处理写入异常。"""
+    from pathlib import Path
+
+    out = Path(path)
+    try:
+        if out.parent and not out.parent.exists():
+            out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(content, encoding="utf-8")
+    except OSError as exc:
+        console.print(f"[red]写入报告失败：{exc}[/red]")
+        raise typer.Exit(code=1)
+
+
 @app.command("analyze")
 def analyze_cmd(
     count: int = typer.Option(50, "--count", "-n", help="分析最近多少条提交"),
-    markdown: str = typer.Option(None, "--markdown", "-m", help="导出 Markdown 报告到指定路径"),
+    markdown: Optional[str] = typer.Option(
+        None, "--markdown", "-m", help="导出 Markdown 报告到指定路径"
+    ),
+    ai: bool = typer.Option(
+        False, "--ai", help="结合 LLM 生成「Git 提交周报」（概览/主要变更/建议）"
+    ),
 ) -> None:
-    """分析提交历史：类型分布、提交数与规范合规率。"""
+    """分析提交历史：类型分布、提交数与规范合规率；可选 LLM 周报。"""
     console = Console()
     settings = load_settings()
 
@@ -160,9 +239,21 @@ def analyze_cmd(
 
     report = history.analyze(commits, settings.subject_max_length)
 
+    if ai:
+        gen = llm.generate_weekly_report(report, commits, settings=settings)
+        if gen.degraded:
+            console.print("[yellow]⚠ LLM 调用失败，已降级为规则版周报[/yellow]")
+        if markdown:
+            _write_report(console, markdown, gen.message)
+            console.print(f"[green]✔ 已生成周报：{markdown}[/green]")
+        else:
+            from rich.markdown import Markdown
+
+            console.print(Markdown(gen.message))
+        return
+
     if markdown:
-        with open(markdown, "w", encoding="utf-8") as f:
-            f.write(history.build_markdown(report))
+        _write_report(console, markdown, history.build_markdown(report))
         console.print(f"[green]✔ 已生成 Markdown 报告：{markdown}[/green]")
     else:
         console.print(history.build_table(report))

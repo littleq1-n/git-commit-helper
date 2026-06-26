@@ -11,14 +11,21 @@ from .errors import GitCommandError, NoStagedChanges
 LOG_FIELD_SEP = "\x1f"
 LOG_FORMAT = f"%H{LOG_FIELD_SEP}%s"
 
+# git 命令超时（秒），避免凭据交互等场景无限挂起
+GIT_TIMEOUT = 30
+
 
 def _run(args: Sequence[str]) -> subprocess.CompletedProcess:
     """执行 git 命令并返回结果（不自动抛错，由调用方判断）。"""
-    return subprocess.run(
-        ["git", *args],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        return subprocess.run(
+            ["git", *args],
+            capture_output=True,
+            text=True,
+            timeout=GIT_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise GitCommandError(f"git {' '.join(args)} 执行超时（>{GIT_TIMEOUT}s）") from exc
 
 
 def is_git_repo() -> bool:

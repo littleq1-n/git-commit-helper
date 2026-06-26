@@ -1,3 +1,7 @@
+# 依赖以 pyproject.toml 的 [project] 为准；此文件便于快速安装。
+# 运行依赖：pip install -e .
+# 开发依赖：pip install -e ".[dev]"
+
 # 运行依赖
 typer>=0.12.0          # CLI 框架
 rich>=13.7.0           # 终端美化与表格/面板输出

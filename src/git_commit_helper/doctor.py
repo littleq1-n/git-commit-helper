@@ -62,7 +62,7 @@ def _check_env_file() -> CheckResult:
         name=".env 配置文件",
         passed=ok,
         detail="存在" if ok else "缺失",
-        suggestion="" if ok else "执行 cp .env.example .env 并填写",
+        suggestion="" if ok else "执行 gch init 生成 .env，并 export LLM_API_KEY=你的密钥",
     )
 
 
@@ -79,7 +79,7 @@ def _check_llm_config(settings: Settings) -> CheckResult:
         name="LLM 配置",
         passed=ok,
         detail="已配置" if ok else f"缺少: {', '.join(missing)}",
-        suggestion="" if ok else "在 .env 中补全相应字段",
+        suggestion="" if ok else "请通过环境变量设置",
     )
 
 
